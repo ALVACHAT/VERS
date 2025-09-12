@@ -7,4 +7,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["python", "VERS119.py"]
+CMD ["python", "run_bot.py"]
