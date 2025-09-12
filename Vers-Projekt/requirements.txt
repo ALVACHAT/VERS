@@ -6,3 +6,4 @@ APScheduler
 pytz
 matplotlib
 colorama
+imghdr-py
