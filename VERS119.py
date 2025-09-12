@@ -27,7 +27,7 @@ init(autoreset=True)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # ===== TELEGRAM =====
-TOKEN = "8084949536:AAHbOoC6gLH36DrvFpRQQBCJHBZs4bjtEoA"
+TOKEN = "8084949536:AAGxIZ-h8DPKCi9KuqsbGa3NqyFfzNZoqYI"
 CHAT_ID = 7382335576
 bot = Bot(TOKEN)
 
@@ -241,3 +241,4 @@ def main():
 
 if __name__=="__main__":
     main()
+
