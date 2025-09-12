@@ -4,7 +4,7 @@ from VERS119 import start_command, check_command, status_command, charts_command
 
 TOKEN = os.environ.get("BOT_TOKEN", "TWÓJ_TOKEN")       # najlepiej ustawić jako zmienną środowiskową
 PORT = int(os.environ.get("PORT", 8443))
-WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://TWÓJ_RAILWAY_URL.com/")
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://railway.com/project/19e1fbcd-36ba-4baf-8bd0-e31fd19fe272?environmentId=498bd76e-467b-4d71-aaa7-f9ff681532c0")
 
 app = ApplicationBuilder().token(TOKEN).build()
 
