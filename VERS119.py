@@ -148,21 +148,28 @@ def check_trades():
 
 # ===== KOMENDY TELEGRAM =====
 def start_command(update: Update, context: CallbackContext):
-    update.message.reply_text("VERS119 uruchomiony, Wysyła sygnały LONG/SHORT.")
+    update.message.reply_text("◻ VERS119 uruchomiony, Wysyła sygnały LONG/SHORT. ◻")
 
 def check_command(update: Update, context: CallbackContext):
-    update.message.reply_text("VERS jest online")
+    update.message.reply_text("◼VERS jest online◼")
 
 def status_command(update: Update, context: CallbackContext):
-    text = "Aktualne pozycje:\n\n"
-    for name,pos in position.items():
-        if name=="trend": continue
+    text = "📊 *Aktualne pozycje:*\n\n"
+    for name, pos in position.items():
+        if name == "trend":
+            continue
         if pos:
-            arrow = "LONG" if pos['type']=='LONG' else "SHORT"
-            text += f"{name} {arrow}\nEntry: {pos['entry_price']:.4f}\nStop: {pos['sl']:.4f}\nTarget: {pos['tp']:.4f}\n\n"
+            arrow = "🚀 LONG" if pos['type'] == 'LONG' else "🔻 SHORT"
+            text += (
+                f"⚫ *{name}* {arrow}\n"
+                f"📈 Entry: {pos['entry_price']:.4f}\n"
+                f"🛑 Stop: {pos['stop']:.4f}\n"
+                f"🎯 Target: {pos['target']:.4f}\n\n"
+            )
         else:
-            text += f"{name}\nBrak aktywnej pozycji\n\n"
-    update.message.reply_text(text)
+            text += f"🔹 *{name}*\n✖ Brak aktywnej pozycji\n\n"
+    update.message.reply_text(text, parse_mode="Markdown")
+
 
 def plot_chart(df, name, trend_h1):
     plt.style.use('dark_background')
@@ -241,4 +248,5 @@ def main():
 
 if __name__=="__main__":
     main()
+
 
