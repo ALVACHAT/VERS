@@ -167,7 +167,7 @@ def status_command(update: Update, context: CallbackContext):
                 f"🎯 Target: {pos['target']:.4f}\n\n"
             )
         else:
-            text += f"🔹 *{name}*\n✖ Brak aktywnej pozycji\n\n"
+            text += f"➖ *{name}*\n✖ Brak aktywnej pozycji\n\n"
     update.message.reply_text(text, parse_mode="Markdown")
 
 
@@ -248,5 +248,6 @@ def main():
 
 if __name__=="__main__":
     main()
+
 
 
