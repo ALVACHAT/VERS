@@ -65,12 +65,13 @@ def notify(text, level="info"):
         print(Fore.RED + f"[ERROR] Błąd przy wysyłaniu powiadomienia: {e}")
 
 def notify_exit(name, pos, exit_price, exit_reason):
-    pnl = (exit_price-pos['entry_price'])*(1 if pos['type']=='LONG' else -1)
+    pnl = (exit_price-pos['entry_price'])*(1 if pos['type']=='LONG' else -1) * pos.get("size",1)
     text = (f"Pozycja zamknięta\n"
             f"{name} {pos['type']} {exit_reason}\n"
             f"Entry: {pos['entry_price']:.4f}\n"
             f"Exit: {exit_price:.4f}\n"
             f"PnL: {pnl:.4f}\n"
+            f"Size: {pos.get('size',1):.4f}\n"
             f"RSI: {pos.get('RSI',0):.2f}, ATR: {pos.get('ATR',0):.4f}")
     level = "success" if exit_reason=='TP' else "error"
     notify(text, level)
@@ -81,6 +82,7 @@ def notify_open(name, pos):
             f"Entry: {pos['entry_price']:.4f}\n"
             f"Stop: {pos['sl']:.4f}\n"
             f"Target: {pos['tp']:.4f}\n"
+            f"Size: {pos['size']:.4f}\n"
             f"RSI: {pos.get('RSI',0):.2f}, ATR: {pos.get('ATR',0):.4f}")
     level = "success" if pos['type']=='LONG' else "error"
     notify(text, level)
@@ -132,6 +134,12 @@ def check_trades():
                 pos_type = "LONG" if trades[-1] > 0 else "SHORT"
                 sl = close - atr if pos_type=="LONG" else close + atr
                 tp = close + atr if pos_type=="LONG" else close - atr
+
+                # --- WYLICZANIE WIELKOŚCI POZYCJI ---
+                risk_per_trade = 10  # USD
+                risk_per_unit = abs(close - sl)
+                size = risk_per_trade / risk_per_unit if risk_per_unit > 0 else 0
+
                 position[name] = {
                     "type": pos_type,
                     "entry_price": close,
@@ -139,7 +147,8 @@ def check_trades():
                     "tp": tp,
                     "entry_time": str(last_row.name),
                     "ATR": atr,
-                    "RSI": rsi
+                    "RSI": rsi,
+                    "size": size
                 }
                 save_position(position)
                 notify_open(name, position[name])
@@ -163,13 +172,13 @@ def status_command(update: Update, context: CallbackContext):
             text += (
                 f"⚫ *{name}* {arrow}\n"
                 f"📈 Entry: {pos['entry_price']:.4f}\n"
-                f"🛑 Stop: {pos['stop']:.4f}\n"
-                f"🎯 Target: {pos['target']:.4f}\n\n"
+                f"🛑 Stop: {pos['sl']:.4f}\n"
+                f"🎯 Target: {pos['tp']:.4f}\n"
+                f"📦 Size: {pos['size']:.4f}\n\n"
             )
         else:
             text += f"➖ *{name}*\n✖ Brak aktywnej pozycji\n\n"
     update.message.reply_text(text, parse_mode="Markdown")
-
 
 def plot_chart(df, name, trend_h1):
     plt.style.use('dark_background')
@@ -248,6 +257,7 @@ def main():
 
 if __name__=="__main__":
     main()
+
 
 
 
