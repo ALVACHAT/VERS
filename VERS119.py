@@ -178,25 +178,28 @@ def check_trades():
 
 # ===== KOMENDY TELEGRAM =====
 def start_command(update: Update, context: CallbackContext):
-    update.message.reply_text("VERS 119 uruchomiony! Wysyła sygnały LONG/SHORT.")
+    update.message.reply_text("◻ VERS119 uruchomiony, Wysyła sygnały LONG/SHORT. ◻")
 
 def check_command(update: Update, context: CallbackContext):
-    update.message.reply_text("Bot aktywny.")
+    update.message.reply_text("◼VERS jest online◼")
 
 def status_command(update: Update, context: CallbackContext):
-    text = "Aktualne pozycje:\n\n"
+    text = "📊 Aktualne pozycje:\n\n"
     for name,pos in position.items():
-        if name=="trend": continue
+        if name=="trend": 
+            continue
+        text += f"➖ {name}\n"
         if pos:
-            arrow = "LONG" if pos['type']=='LONG' else "SHORT"
-            text += (f"{name} {arrow}\n"
+            arrow = "✔ LONG" if pos['type']=='LONG' else "✔ SHORT"
+            text += (f"{arrow}\n"
                      f"Entry: {pos['entry_price']:.4f}\n"
                      f"Stop: {pos['stop']:.4f}\n"
                      f"Target: {pos['target']:.4f}\n"
                      f"Lots: {pos['lots']:.4f}\n\n")
         else:
-            text += f"{name}\nBrak aktywnej pozycji\n\n"
+            text += "✖ Brak aktywnej pozycji\n\n"
     update.message.reply_text(text)
+
 
 # ===== MAIN =====
 def main():
