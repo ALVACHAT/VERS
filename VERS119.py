@@ -23,7 +23,7 @@ init(autoreset=True)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # → WSTAW TU SWÓJ TOKEN I CHAT_ID:
-TOKEN = "TWOJ_TOKEN_TUTAJ"   # ← zamień na token bota
+TOKEN = "8084949536:AAGxIZ-h8DPKCi9KuqsbGa3NqyFfzNZoqYI"   # ← zamień na token bota
 CHAT_ID = 123456789          # ← zamień na swój chat_id (liczba)
 
 # Bezpieczeństwo: spróbuj stworzyć instancję bota (nie przerywamy jeśli nie działa)
