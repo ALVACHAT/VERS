@@ -65,18 +65,20 @@ def notify_open(name, pos):
             f"Entry: {pos['entry_price']:.4f}\n"
             f"Stop: {pos['stop']:.4f}\n"
             f"Target: {pos['target']:.4f}\n"
+            f"Size: {pos['size']:.4f}\n"
             f"RSI: {pos.get('RSI',0):.2f}, ATR: {pos.get('ATR',0):.4f}")
     level = "success" if pos['type']=='LONG' else "error"
     notify(text, level)
 
 def notify_exit(name, pos, exit_price, exit_reason):
-    pnl = (exit_price-pos['entry_price'])*(1 if pos['type']=='LONG' else -1)
+    pnl = (exit_price-pos['entry_price'])*(pos.get('size',1) if pos['type']=='LONG' else -pos.get('size',1))
     text = (f"Pozycja zamknięta\n"
             f"{name} {pos['type']} {exit_reason}\n"
             f"Entry: {pos['entry_price']:.4f}\n"
             f"Exit: {exit_price:.4f}\n"
             f"PnL: {pnl:.4f}\n"
-            f"RSI: {pos.get('RSI',0):.2f}, ATR: {pos.get('ATR',0):.4f}")
+            f"RSI: {pos.get('RSI',0):.2f}, ATR: {pos.get('ATR',0):.4f}\n"
+            f"Size: {pos.get('size',1):.4f}")
     level = "success" if exit_reason=='TP' else "error"
     notify(text, level)
 
@@ -84,6 +86,7 @@ def notify_exit(name, pos, exit_price, exit_reason):
 def check_trades():
     global position
     assets = {"BTC-USD":"BTC","^NDX":"NASDAQ 100","^GSPC":"S&P 500"}
+    risk_per_trade = 25  # maksymalna strata w $
 
     for symbol,name in assets.items():
         df = yf.download(symbol, period="7d", interval="15m", progress=False, auto_adjust=True)
@@ -119,15 +122,19 @@ def check_trades():
         if not pos and atr > prev_atr and volume > 1.1 * vol_ma:
             if ema_s > ema_l + ema_diff_thresh and close > ema200 and rsi < RSI_long_thresh:
                 stop = close - atr
+                size = risk_per_trade / (close - stop)
                 target = close + RR_value * atr
-                position[name] = {'type':'LONG','entry_price':close,'stop':stop,'target':target,'RSI':rsi,'ATR':atr}
+                position[name] = {'type':'LONG','entry_price':close,'stop':stop,'target':target,
+                                  'size':size,'RSI':rsi,'ATR':atr}
                 save_position(position)
                 notify_open(name, position[name])
 
             elif ema_s < ema_l - ema_diff_thresh and close < ema200 and rsi > RSI_short_thresh:
                 stop = close + atr
+                size = risk_per_trade / (stop - close)
                 target = close - RR_value * atr
-                position[name] = {'type':'SHORT','entry_price':close,'stop':stop,'target':target,'RSI':rsi,'ATR':atr}
+                position[name] = {'type':'SHORT','entry_price':close,'stop':stop,'target':target,
+                                  'size':size,'RSI':rsi,'ATR':atr}
                 save_position(position)
                 notify_open(name, position[name])
 
@@ -163,7 +170,7 @@ def status_command(update: Update, context: CallbackContext):
         if name=="trend": continue
         if pos:
             arrow = "LONG" if pos['type']=='LONG' else "SHORT"
-            text += f"{name} {arrow}\nEntry: {pos['entry_price']:.4f}\nStop: {pos['stop']:.4f}\nTarget: {pos['target']:.4f}\n\n"
+            text += f"{name} {arrow}\nEntry: {pos['entry_price']:.4f}\nStop: {pos['stop']:.4f}\nTarget: {pos['target']:.4f}\nSize: {pos.get('size',1):.4f}\n\n"
         else:
             text += f"{name}\nBrak aktywnej pozycji\n\n"
     update.message.reply_text(text)
