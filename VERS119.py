@@ -1,6 +1,6 @@
-# VERS119_full.py
+# VERS119_full_nocharts.py
 # Wymagania:
-# pip install yfinance pandas numpy python-telegram-bot==13.15 APScheduler pytz matplotlib colorama
+# pip install yfinance pandas numpy python-telegram-bot==13.15 APScheduler pytz colorama
 
 import logging
 import yfinance as yf
@@ -12,10 +12,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
 import json
 import os
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import io
 from colorama import Fore, Style, init
 
 # ===== IMPORT STRATEGII =====
@@ -26,8 +22,8 @@ init(autoreset=True)
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # ===== TELEGRAM =====
-TOKEN = "8084949536:AAGxIZ-h8DPKCi9KuqsbGa3NqyFfzNZoqYI"  # Twój token
-CHAT_ID = 7382335576  # Twój chat_id
+TOKEN = "8084949536:AAGxIZ-h8DPKCi9KuqsbGa3NqyFfzNZoqYI"
+CHAT_ID = 7382335576
 bot = Bot(TOKEN)
 
 # ===== PLIK DO POZYCJI =====
@@ -172,43 +168,6 @@ def status_command(update: Update, context: CallbackContext):
             text += f"{name}\nBrak aktywnej pozycji\n\n"
     update.message.reply_text(text)
 
-# ===== WYKRESY =====
-def plot_chart(df, name):
-    plt.style.use('dark_background')
-    fig, ax1 = plt.subplots(figsize=(12,6))
-    ax1.plot(df['Close'], label='Close', color='magenta', linewidth=1.5)
-    ax1.plot(df['EMA_short'], label=f'EMA{EMA_short}', color='pink', linestyle='--')
-    ax1.plot(df['EMA_long'], label=f'EMA{EMA_long}', color='hotpink', linestyle='-.')
-    ax1.plot(df['EMA200'], label='EMA200', color='violet', linestyle=':')
-    ax1.set_ylabel('Price', color='white')
-    ax1.legend(loc='upper left', fontsize=8)
-    ax1.grid(True, color='gray', linestyle='--', alpha=0.3)
-
-    # zaznaczenie pozycji
-    for idx,row in df.iterrows():
-        if 'position_type' in row:
-            color='lime' if row['position_type']=='LONG' else 'red'
-            ax1.scatter(idx,row['Close'],color=color,s=60,marker='^' if row['position_type']=='LONG' else 'v')
-
-    buf=io.BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight')
-    buf.seek(0)
-    plt.close(fig)
-    return buf
-
-def charts_command(update: Update, context: CallbackContext):
-    assets={"BTC-USD":"BTC","^NDX":"NASDAQ 100","^GSPC":"S&P 500"}
-    for symbol,name in assets.items():
-        df=yf.download(symbol, period="7d", interval="15m", progress=False, auto_adjust=True)
-        if df.empty: continue
-        df=add_indicators(df)
-        # opcjonalnie dodanie kolumny pozycji do wizualizacji
-        pos_type = position.get(name,{}).get('type')
-        if pos_type:
-            df['position_type'] = pos_type
-        buf=plot_chart(df,name)
-        update.message.reply_photo(photo=buf, caption=f"{name} - 15m chart with potential entries")
-
 # ===== MAIN =====
 def main():
     logging.info("Start bota...")
@@ -218,7 +177,6 @@ def main():
     dispatcher.add_handler(CommandHandler("start", start_command))
     dispatcher.add_handler(CommandHandler("check", check_command))
     dispatcher.add_handler(CommandHandler("status", status_command))
-    dispatcher.add_handler(CommandHandler("charts", charts_command))
 
     # Scheduler i natychmiastowe sprawdzenie
     scheduler = BackgroundScheduler()
