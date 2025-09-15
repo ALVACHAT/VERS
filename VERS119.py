@@ -152,7 +152,7 @@ def check_trades():
 
 # ===== KOMENDY TELEGRAM =====
 def start_command(update: Update, context: CallbackContext):
-    update.message.reply_text("Bot FlipsRSI uruchomiony! Wysyła sygnały LONG/SHORT.")
+    update.message.reply_text("VERS 119 uruchomiony! Wysyła sygnały LONG/SHORT.")
 
 def check_command(update: Update, context: CallbackContext):
     update.message.reply_text("Bot aktywny.")
