@@ -178,7 +178,17 @@ def check_trades():
 
 # ===== KOMENDY TELEGRAM =====
 def start_command(update: Update, context: CallbackContext):
-    update.message.reply_text("◻ VERS119 uruchomiony, Wysyła sygnały LONG/SHORT. ◻")
+    text = (
+        "◻ VERS119 - Cudo techniki stworzone przez V-Max Blood C.O i zespół techników "
+        "inżynierii sztucznej inteligencji 5o w Orsku.\n"
+        "VERS analizuje rynki co 15 minut czasu GMT+2 i sprawdza czy wszystkie warunki "
+        "VERS109Strategy na otwarcie pozycji są spełnione. Wysyła pozycje na Telegrama.\n\n"
+        "Nowoczesna technologia obliczania wielkości pozycji aby SL = 25$.\n"
+        "Dostępne 3 instrumenty: BTC, Nasdaq 100 i S&P 500.\n\n"
+        "Bot przeszedł backtest na rynkach 2020-2025 i osiągnął winratio na poziomie "
+        "54-57.2% przy RR 1:1.5 ◻"
+    )
+    update.message.reply_text(text)
 
 def check_command(update: Update, context: CallbackContext):
     update.message.reply_text("◼VERS jest online◼")
