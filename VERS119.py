@@ -65,43 +65,53 @@ def notify_open(name, pos):
             f"Entry: {pos['entry_price']:.4f}\n"
             f"Stop: {pos['stop']:.4f}\n"
             f"Target: {pos['target']:.4f}\n"
-            f"Size: {pos['size']:.4f}\n"
+            f"Lots: {pos['lots']:.4f}\n"
             f"RSI: {pos.get('RSI',0):.2f}, ATR: {pos.get('ATR',0):.4f}")
     level = "success" if pos['type']=='LONG' else "error"
     notify(text, level)
 
 def notify_exit(name, pos, exit_price, exit_reason):
-    pnl = (exit_price-pos['entry_price'])*(pos.get('size',1) if pos['type']=='LONG' else -pos.get('size',1))
+    pnl_per_unit = (exit_price - pos['entry_price']) * (1 if pos['type']=='LONG' else -1)
+    lot_value = lot_values[name]
+    pnl = pnl_per_unit * lot_value * pos['lots']
     text = (f"Pozycja zamknięta\n"
             f"{name} {pos['type']} {exit_reason}\n"
             f"Entry: {pos['entry_price']:.4f}\n"
             f"Exit: {exit_price:.4f}\n"
-            f"PnL: {pnl:.4f}\n"
-            f"RSI: {pos.get('RSI',0):.2f}, ATR: {pos.get('ATR',0):.4f}\n"
-            f"Size: {pos.get('size',1):.4f}")
+            f"Lots: {pos['lots']:.4f}\n"
+            f"PnL: {pnl:.2f} $\n"
+            f"RSI: {pos.get('RSI',0):.2f}, ATR: {pos.get('ATR',0):.4f}")
     level = "success" if exit_reason=='TP' else "error"
     notify(text, level)
+
+# ===== PARAMETRY RYZYKA =====
+risk_per_trade = 25  # max strata na trade
+
+lot_values = {
+    "BTC": 51,
+    "NASDAQ 100": 1200,
+    "S&P 500": 33
+}
 
 # ===== STRATEGIA LIVE =====
 def check_trades():
     global position
     assets = {"BTC-USD":"BTC","^NDX":"NASDAQ 100","^GSPC":"S&P 500"}
-    risk_per_trade = 25  # maksymalna strata w $
 
     for symbol,name in assets.items():
         df = yf.download(symbol, period="7d", interval="15m", progress=False, auto_adjust=True)
         if df.empty: 
             continue
 
-        df = add_indicators(df)
-        if df.empty: 
-            continue
-
-        # ===== sprawdzenie czy świeca jest nowa =====
+        # sprawdzamy świecę
         last_time = df.index[-1]
         now = pd.Timestamp.now(tz=pytz.timezone("Europe/Warsaw"))
         if (now - last_time).total_seconds() > 20*60:
-            print(f"Rynek {name} zamknięty – brak nowych świec, pomijam analizę.")
+            print(f"Rynek {name} zamknięty – brak nowych świec.")
+            continue
+
+        df = add_indicators(df)
+        if df.empty: 
             continue
 
         last = df.iloc[-1]
@@ -129,19 +139,21 @@ def check_trades():
         if not pos and atr > prev_atr and volume > 1.1 * vol_ma:
             if ema_s > ema_l + ema_diff_thresh and close > ema200 and rsi < RSI_long_thresh:
                 stop = close - atr
-                size = risk_per_trade / (close - stop)
                 target = close + RR_value * atr
-                position[name] = {'type':'LONG','entry_price':close,'stop':stop,'target':target,
-                                  'size':size,'RSI':rsi,'ATR':atr}
+                risk_per_unit = abs(close - stop)
+                lot_risk = risk_per_unit * lot_values[name]
+                lots = risk_per_trade / lot_risk if lot_risk > 0 else 0
+                position[name] = {'type':'LONG','entry_price':close,'stop':stop,'target':target,'RSI':rsi,'ATR':atr,'lots':lots}
                 save_position(position)
                 notify_open(name, position[name])
 
             elif ema_s < ema_l - ema_diff_thresh and close < ema200 and rsi > RSI_short_thresh:
                 stop = close + atr
-                size = risk_per_trade / (stop - close)
                 target = close - RR_value * atr
-                position[name] = {'type':'SHORT','entry_price':close,'stop':stop,'target':target,
-                                  'size':size,'RSI':rsi,'ATR':atr}
+                risk_per_unit = abs(close - stop)
+                lot_risk = risk_per_unit * lot_values[name]
+                lots = risk_per_trade / lot_risk if lot_risk > 0 else 0
+                position[name] = {'type':'SHORT','entry_price':close,'stop':stop,'target':target,'RSI':rsi,'ATR':atr,'lots':lots}
                 save_position(position)
                 notify_open(name, position[name])
 
@@ -177,7 +189,11 @@ def status_command(update: Update, context: CallbackContext):
         if name=="trend": continue
         if pos:
             arrow = "LONG" if pos['type']=='LONG' else "SHORT"
-            text += f"{name} {arrow}\nEntry: {pos['entry_price']:.4f}\nStop: {pos['stop']:.4f}\nTarget: {pos['target']:.4f}\nSize: {pos.get('size',1):.4f}\n\n"
+            text += (f"{name} {arrow}\n"
+                     f"Entry: {pos['entry_price']:.4f}\n"
+                     f"Stop: {pos['stop']:.4f}\n"
+                     f"Target: {pos['target']:.4f}\n"
+                     f"Lots: {pos['lots']:.4f}\n\n")
         else:
             text += f"{name}\nBrak aktywnej pozycji\n\n"
     update.message.reply_text(text)
@@ -192,7 +208,6 @@ def main():
     dispatcher.add_handler(CommandHandler("check", check_command))
     dispatcher.add_handler(CommandHandler("status", status_command))
 
-    # Scheduler i natychmiastowe sprawdzenie
     scheduler = BackgroundScheduler()
     scheduler.add_job(check_trades, 'interval', minutes=15, timezone=pytz.timezone('Europe/Warsaw'))
     scheduler.start()
