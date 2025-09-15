@@ -117,16 +117,17 @@ def check_trades():
         last = df.iloc[-1]
         prev = df.iloc[-2]
 
-        close = float(last["Close"])
-        ema_s = float(last["EMA_short"])
-        ema_l = float(last["EMA_long"])
-        ema200 = float(last["EMA200"])
-        atr = float(last["ATR"])
-        prev_atr = float(prev["ATR"])
-        rsi = float(last["RSI"])
-        volume = float(last["Volume"])
-        vol_ma = float(last["VolMA20"])
-        hi, lo = float(last["High"]), float(last["Low"])
+        # ===== konwersja na float bez ostrzeżeń =====
+        close = float(last["Close"].iloc[0])
+        ema_s = float(last["EMA_short"].iloc[0])
+        ema_l = float(last["EMA_long"].iloc[0])
+        ema200 = float(last["EMA200"].iloc[0])
+        atr = float(last["ATR"].iloc[0])
+        prev_atr = float(prev["ATR"].iloc[0])
+        rsi = float(last["RSI"].iloc[0])
+        volume = float(last["Volume"].iloc[0])
+        vol_ma = float(last["VolMA20"].iloc[0])
+        hi, lo = float(last["High"].iloc[0]), float(last["Low"].iloc[0])
 
         ema_diff_thresh = 0.001 * close
 
