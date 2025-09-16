@@ -88,9 +88,9 @@ def notify_exit(name, pos, exit_price, exit_reason):
 risk_per_trade = 25  # max strata na trade
 
 lot_values = {
-    "BTC": 51,
-    "NASDAQ 100": 1200,
-    "S&P 500": 33
+    "BTC": 48879.99,
+    "NASDAQ 100": 1033,
+    "S&P 500": 281
 }
 
 # ===== STRATEGIA LIVE =====
