@@ -23,7 +23,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 # ===== TELEGRAM =====
 TOKEN = "8084949536:AAGxIZ-h8DPKCi9KuqsbGa3NqyFfzNZoqYI"
-CHAT_IDS = [7382335576, 1234567890]
+CHAT_IDS = [7382335576, 7022309811]
 bot = Bot(TOKEN)
 
 # ===== PLIK DO POZYCJI =====
