@@ -109,11 +109,36 @@ lot_values = {
 }
 
 # ===== STRATEGIA LIVE =====
+from datetime import datetime, time
+
+# funkcja sprawdzająca, czy rynek jest aktualnie aktywny
+def is_market_open(name):
+    now = datetime.utcnow()
+    weekday = now.weekday()  # 0=poniedziałek, 6=niedziela
+
+    if name == "BTC":
+        return True  # BTC działa cały czas
+    elif name == "NASDAQ 100":
+        return weekday < 5  # nie działa w weekendy
+    elif name == "S&P 500":
+        if weekday >= 5:
+            return False  # weekendy nieaktywne
+        start = time(15, 30)  # 15:30 UTC
+        end = time(22, 0)     # 22:00 UTC
+        return start <= now.time() <= end
+    return False
+
+
+# ===== STRATEGIA LIVE =====
 def check_trades():
     global position
     assets = {"BTC-USD":"BTC","^NDX":"NASDAQ 100","^GSPC":"S&P 500"}
 
     for symbol,name in assets.items():
+        if not is_market_open(name):
+            print(f"[{name}] rynek poza godzinami aktywności. Pomijam.")
+            continue
+
         try:
             df = yf.download(symbol, period="7d", interval="15m", progress=False, auto_adjust=True)
         except Exception as e:
@@ -123,15 +148,6 @@ def check_trades():
         if df.empty:
             print(f"[{name}] brak danych z yfinance.")
             continue
-
-        # sprawdzamy świecę (czy jest nowa)
-        last_time = df.index[-1]
-        now = pd.Timestamp.utcnow()
-        
-        if (now - last_time).total_seconds() > 4*60*60:  # 4 godziny
-            print(f"Rynek {name} brak świeżych danych (ostatnia: {last_time}). Pomijam.")
-            continue
-
 
         # dodajemy indykatory (musi być po pobraniu świecy)
         df = add_indicators(df)
@@ -164,6 +180,7 @@ def check_trades():
             position[name] = {}
 
         pos = position[name]
+
 
         # --- Otwieranie ---
         # dodatkowa walidacja: pos powinien mieć 'entry_price' aby być uznany jako aktywny
