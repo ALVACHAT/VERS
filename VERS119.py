@@ -126,7 +126,7 @@ def check_trades():
 
         # sprawdzamy świecę (czy jest nowa)
         last_time = df.index[-1]
-        now = pd.Timestamp.now(tz=pytz.timezone("Europe/Warsaw"))
+        now = pd.Timestamp.utcnow()
         if (now - last_time).total_seconds() > 20*60:
             # brak świeżej świecy - pomijamy
             print(f"Rynek {name} zamknięty lub brak nowej świecy (ostatnia: {last_time}). Pomijam.")
