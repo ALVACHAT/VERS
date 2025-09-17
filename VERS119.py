@@ -127,10 +127,11 @@ def check_trades():
         # sprawdzamy świecę (czy jest nowa)
         last_time = df.index[-1]
         now = pd.Timestamp.utcnow()
-        if (now - last_time).total_seconds() > 20*60:
-            # brak świeżej świecy - pomijamy
-            print(f"Rynek {name} zamknięty lub brak nowej świecy (ostatnia: {last_time}). Pomijam.")
+        
+        if (now - last_time).total_seconds() > 4*60*60:  # 4 godziny
+            print(f"Rynek {name} brak świeżych danych (ostatnia: {last_time}). Pomijam.")
             continue
+
 
         # dodajemy indykatory (musi być po pobraniu świecy)
         df = add_indicators(df)
