@@ -23,7 +23,7 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 # ===== TELEGRAM =====
 TOKEN = "8084949536:AAGxIZ-h8DPKCi9KuqsbGa3NqyFfzNZoqYI"
-CHAT_ID = 7382335576
+CHAT_IDS = [7382335576, 1234567890]
 bot = Bot(TOKEN)
 
 # ===== PLIK DO POZYCJI =====
@@ -63,10 +63,11 @@ def notify(text, level="info"):
         print(Fore.RED + text)
     else:
         print(Fore.YELLOW + text)
-    try:
-        bot.send_message(chat_id=CHAT_ID, text=text, parse_mode='Markdown')
-    except Exception as e:
-        print(Fore.RED + f"Błąd przy wysyłaniu powiadomienia: {e}")
+    for chat_id in CHAT_IDS:
+        try:
+            bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
+        except Exception as e:
+            print(Fore.RED + f"Błąd przy wysyłaniu powiadomienia do {chat_id}: {e}")
 
 def notify_open(name, pos):
     text = (f"Nowa pozycja\n"
