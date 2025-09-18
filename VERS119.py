@@ -96,7 +96,6 @@ def notify_exit(name, pos, exit_price, exit_reason):
         notify(text, level)
     except Exception as e:
         print(Fore.RED + f"Błąd w notify_exit: {e}")
-        # i tak spróbuj wysłać prostą wiadomość
         notify(f"Pozycja zamknięta {name} {exit_reason}. (błąd szczegółów: {e})", "info")
 
 # ===== PARAMETRY RYZYKA =====
@@ -111,23 +110,20 @@ lot_values = {
 # ===== STRATEGIA LIVE =====
 from datetime import datetime, time
 
-# funkcja sprawdzająca, czy rynek jest aktualnie aktywny
 def is_market_open(name):
     now = datetime.utcnow()
-    weekday = now.weekday()  # 0=poniedziałek, 6=niedziela
-
+    weekday = now.weekday()
     if name == "BTC":
-        return True  # BTC działa cały czas
+        return True
     elif name == "NASDAQ 100":
-        return weekday < 5  # nie działa w weekendy
+        return weekday < 5
     elif name == "S&P 500":
         if weekday >= 5:
-            return False  # weekendy nieaktywne
-        start = time(15, 30)  # 15:30 UTC
-        end = time(22, 0)     # 22:00 UTC
+            return False
+        start = time(15, 30)
+        end = time(22, 0)
         return start <= now.time() <= end
     return False
-
 
 # ===== STRATEGIA LIVE =====
 def check_trades():
@@ -149,7 +145,6 @@ def check_trades():
             print(f"[{name}] brak danych z yfinance.")
             continue
 
-        # dodajemy indykatory (musi być po pobraniu świecy)
         df = add_indicators(df)
         if df.empty:
             print(Fore.RED + f"[{name}] add_indicators zwróciło puste df.")
@@ -158,7 +153,6 @@ def check_trades():
         last = df.iloc[-1]
         prev = df.iloc[-2]
 
-        # ===== konwersja na float (last to Series) =====
         try:
             close = float(last["Close"])
             ema_s = float(last["EMA_short"])
@@ -180,36 +174,27 @@ def check_trades():
             position[name] = {}
 
         pos = position[name]
-
-
-        # --- Otwieranie ---
-        # dodatkowa walidacja: pos powinien mieć 'entry_price' aby być uznany jako aktywny
         is_active = bool(pos) and ("entry_price" in pos)
 
         if not is_active and atr > prev_atr and volume > 1.1 * vol_ma:
-            # LONG
+            # --- LONG ---
             if ema_s > ema_l + ema_diff_thresh and close > ema200 and rsi < RSI_long_thresh:
                 stop = close - atr
                 target = close + RR_value * atr
-
                 risk_per_unit = abs(close - stop)
                 lot_value = lot_values.get(name, None)
-
                 if lot_value is None:
                     print(Fore.RED + f"[{name}] Brak wartości lot_values dla instrumentu.")
                     continue
-
                 lot_risk = risk_per_unit * lot_value
                 if lot_risk <= 0 or np.isnan(lot_risk):
                     print(Fore.RED + f"[{name}] lot_risk nieprawidłowy ({lot_risk}), pomijam otwarcie.")
                     continue
-
                 lots = round(risk_per_trade / lot_risk, 6)
                 if lots <= 0:
-                    print(Fore.YELLOW + f"[{name}] Obliczone lots = 0, pomijam otwarcie (entry={close}, stop={stop}).")
+                    print(Fore.YELLOW + f"[{name}] Obliczone lots = 0, pomijam otwarcie.")
                     continue
 
-                # zapisz pełną pozycję
                 position[name] = {
                     'type':'LONG',
                     'entry_price': close,
@@ -217,30 +202,31 @@ def check_trades():
                     'target': target,
                     'RSI': rsi,
                     'ATR': atr,
-                    'lots': lots
+                    'lots': lots,
+                    'notified': False
                 }
                 save_position(position)
-                notify_open(name, position[name])
+                if not position[name]['notified']:
+                    notify_open(name, position[name])
+                    position[name]['notified'] = True
+                    save_position(position)
 
-            # SHORT
+            # --- SHORT ---
             elif ema_s < ema_l - ema_diff_thresh and close < ema200 and rsi > RSI_short_thresh:
                 stop = close + atr
                 target = close - RR_value * atr
-
                 risk_per_unit = abs(close - stop)
                 lot_value = lot_values.get(name, None)
                 if lot_value is None:
                     print(Fore.RED + f"[{name}] Brak wartości lot_values dla instrumentu.")
                     continue
-
                 lot_risk = risk_per_unit * lot_value
                 if lot_risk <= 0 or np.isnan(lot_risk):
                     print(Fore.RED + f"[{name}] lot_risk nieprawidłowy ({lot_risk}), pomijam otwarcie.")
                     continue
-
                 lots = round(risk_per_trade / lot_risk, 6)
                 if lots <= 0:
-                    print(Fore.YELLOW + f"[{name}] Obliczone lots = 0, pomijam otwarcie (entry={close}, stop={stop}).")
+                    print(Fore.YELLOW + f"[{name}] Obliczone lots = 0, pomijam otwarcie.")
                     continue
 
                 position[name] = {
@@ -250,12 +236,16 @@ def check_trades():
                     'target': target,
                     'RSI': rsi,
                     'ATR': atr,
-                    'lots': lots
+                    'lots': lots,
+                    'notified': False
                 }
                 save_position(position)
-                notify_open(name, position[name])
+                if not position[name]['notified']:
+                    notify_open(name, position[name])
+                    position[name]['notified'] = True
+                    save_position(position)
 
-        # --- Zamykanie ---
+        # --- Zamykanie pozycji ---
         elif is_active:
             exit_price, exit_reason = None, None
             try:
@@ -275,7 +265,6 @@ def check_trades():
 
             if exit_price is not None:
                 notify_exit(name,pos,exit_price,exit_reason)
-                # usuń pozycję i zapisz
                 position[name] = {}
                 save_position(position)
 
@@ -302,7 +291,6 @@ def status_command(update: Update, context: CallbackContext):
         if name=="trend":
             continue
         text += f"➖ {name}\n"
-        # uznajemy aktywną pozycję tylko wtedy gdy ma entry_price
         if pos and "entry_price" in pos:
             arrow = "✔ LONG" if pos['type']=='LONG' else "✔ SHORT"
             text += (f"{arrow}\n"
@@ -328,7 +316,6 @@ def main():
     scheduler.add_job(check_trades, 'interval', minutes=5, timezone=pytz.timezone('Europe/Warsaw'))
     scheduler.start()
 
-    # natychmiastowe sprawdzenie przy starcie
     check_trades()
 
     updater.start_polling()
@@ -336,4 +323,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
