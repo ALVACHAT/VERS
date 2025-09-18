@@ -119,10 +119,11 @@ def is_market_open(name):
         return weekday < 5
     elif name == "S&P 500":
         if weekday >= 5:
-            return False
-        start = time(15, 30)
-        end = time(22, 0)
+            return False  # weekendy nieaktywne
+        start = time(13, 30)  # 13:30 UTC (15:30 PL)
+        end = time(20, 0)     # 20:00 UTC (22:00 PL)
         return start <= now.time() <= end
+
     return False
 
 # ===== STRATEGIA LIVE =====
