@@ -1,6 +1,7 @@
 # VERS119_full_nocharts.py
 # Wymagania:
 # pip install yfinance pandas numpy python-telegram-bot==13.15 APScheduler pytz colorama
+# update 1909
 
 import logging
 import yfinance as yf
