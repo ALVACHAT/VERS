@@ -116,19 +116,38 @@ from datetime import datetime, time
 def is_market_open(name):
     now = datetime.utcnow()
     weekday = now.weekday()
+    current_time = now.time()
+
     if name == "BTC":
         return True
-    elif name in ["NASDAQ 100", "NVIDIA"]:
-        return weekday < 5
-    elif name == "S&P 500":
+
+    elif name == "NASDAQ 100":
+        return weekday < 5  # cały dzień roboczy (ETF’y notowane prawie 24h)
+
+    elif name == "NVIDIA":
         if weekday >= 5:
-            return False  # weekendy nieaktywne
+            return False
         start = time(13, 30)  # 13:30 UTC (15:30 PL)
         end = time(20, 0)     # 20:00 UTC (22:00 PL)
-        return start <= now.time() <= end
+        return start <= current_time <= end
+
+    elif name == "S&P 500":
+        if weekday >= 5:
+            return False
+        start = time(13, 30)  # 13:30 UTC (15:30 PL)
+        end = time(20, 0)     # 20:00 UTC (22:00 PL)
+        return start <= current_time <= end
+
     elif name == "Gold":
-        return True  # złoto handlowane prawie całą dobę
+        if weekday >= 5:
+            return False
+        start = time(23, 0)   # 23:00 UTC (01:00 PL)
+        end = time(22, 0)     # 22:00 UTC (24:00 PL)
+        # Uwaga: rynek zamknięty tylko od 22:00 do 23:00 UTC
+        return not (time(22, 0) <= current_time < time(23, 0))
+
     return False
+
 
 # ===== STRATEGIA LIVE =====
 def check_trades():
