@@ -1,7 +1,7 @@
 # VERS119_full_nocharts.py
 # Wymagania:
 # pip install yfinance pandas numpy python-telegram-bot==13.15 APScheduler pytz colorama
-# update 1909.v2
+# update 1909.v3 (dodano NVIDIA i Gold)
 
 import logging
 import yfinance as yf
@@ -43,14 +43,14 @@ def load_position():
             try:
                 data = json.load(f)
                 # upewnij się, że klucze są
-                for k in ["BTC", "NASDAQ 100", "S&P 500", "trend"]:
+                for k in ["BTC", "NASDAQ 100", "S&P 500", "NVIDIA", "Gold", "trend"]:
                     if k not in data:
                         data[k] = {}
                 return data
             except Exception as e:
                 print(Fore.RED + f"Błąd przy wczytywaniu position.json: {e}")
-                return {"BTC": {}, "NASDAQ 100": {}, "S&P 500": {}, "trend": {}}
-    return {"BTC": {}, "NASDAQ 100": {}, "S&P 500": {}, "trend": {}}
+                return {"BTC": {}, "NASDAQ 100": {}, "S&P 500": {}, "NVIDIA": {}, "Gold": {}, "trend": {}}
+    return {"BTC": {}, "NASDAQ 100": {}, "S&P 500": {}, "NVIDIA": {}, "Gold": {}, "trend": {}}
 
 position = load_position()
 if "trend" not in position:
@@ -105,7 +105,9 @@ risk_per_trade = 25.0  # max strata na trade
 lot_values = {
     "BTC": 48879.99,
     "NASDAQ 100": 1033,
-    "S&P 500": 281
+    "S&P 500": 281,
+    "NVIDIA": 430,   # przykładowa wartość 1 akcji NVDA
+    "Gold": 200      # przykładowa wartość dla kontraktu CFD na złoto
 }
 
 # ===== STRATEGIA LIVE =====
@@ -116,7 +118,7 @@ def is_market_open(name):
     weekday = now.weekday()
     if name == "BTC":
         return True
-    elif name == "NASDAQ 100":
+    elif name in ["NASDAQ 100", "NVIDIA"]:
         return weekday < 5
     elif name == "S&P 500":
         if weekday >= 5:
@@ -124,13 +126,20 @@ def is_market_open(name):
         start = time(13, 30)  # 13:30 UTC (15:30 PL)
         end = time(20, 0)     # 20:00 UTC (22:00 PL)
         return start <= now.time() <= end
-
+    elif name == "Gold":
+        return True  # złoto handlowane prawie całą dobę
     return False
 
 # ===== STRATEGIA LIVE =====
 def check_trades():
     global position
-    assets = {"BTC-USD":"BTC","^NDX":"NASDAQ 100","^GSPC":"S&P 500"}
+    assets = {
+        "BTC-USD": "BTC",
+        "^NDX": "NASDAQ 100",
+        "^GSPC": "S&P 500",
+        "NVDA": "NVIDIA",
+        "GC=F": "Gold"
+    }
 
     for symbol,name in assets.items():
         if not is_market_open(name):
@@ -273,14 +282,12 @@ def check_trades():
 # ===== KOMENDY TELEGRAM =====
 def start_command(update: Update, context: CallbackContext):
     text = (
-        "◻ VERS119 - Cudo techniki stworzone przez V-Max Blood C.O i zespół techników "
-        "inżynierii sztucznej inteligencji 5o w Orsku.\n"
-        "VERS analizuje rynki co 15 minut czasu GMT+2 i sprawdza czy wszystkie warunki "
-        "VERS109Strategy na otwarcie pozycji są spełnione. Wysyła pozycje na Telegrama.\n\n"
-        "Nowoczesna technologia obliczania wielkości pozycji aby SL = 25$.\n"
-        "Dostępne 3 instrumenty: BTC, Nasdaq 100 i S&P 500.\n\n"
-        "Bot przeszedł backtest na rynkach 2020-2025 i osiągnął winratio na poziomie "
-        "54-57.2% przy RR 1:1.5 ◻"
+        "◻ VERS119 - Bot tradingowy\n"
+        "Analizuje rynki co 15 minut czasu GMT+2 i sprawdza warunki strategii VERS109Strategy.\n"
+        "Wysyła sygnały na Telegrama.\n\n"
+        "SL = 25$ na trade.\n"
+        "Instrumenty: BTC, Nasdaq 100, S&P 500, NVIDIA, Gold.\n\n"
+        "Backtest 2020-2025: winratio 54-57.2% przy RR 1:1.5 ◻"
     )
     update.message.reply_text(text)
 
