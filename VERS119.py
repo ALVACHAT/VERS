@@ -341,7 +341,7 @@ def main():
     dispatcher.add_handler(CommandHandler("status", status_command))
 
     scheduler = BackgroundScheduler()
-    scheduler.add_job(check_trades, 'interval', minutes=5, timezone=pytz.timezone('Europe/Warsaw'))
+    scheduler.add_job(check_trades, 'interval', minutes=1, timezone=pytz.timezone('Europe/Warsaw'))
     scheduler.start()
 
     check_trades()
