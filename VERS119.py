@@ -106,8 +106,8 @@ lot_values = {
     "BTC": 48879.99,
     "NASDAQ 100": 1033,
     "S&P 500": 281,
-    "NVIDIA": 430,   # przykładowa wartość 1 akcji NVDA
-    "Gold": 200      # przykładowa wartość dla kontraktu CFD na złoto
+    "NVIDIA": 35.27,   # przykładowa wartość 1 akcji NVDA
+    "Gold": 36500      # przykładowa wartość dla kontraktu CFD na złoto
 }
 
 # ===== STRATEGIA LIVE =====
