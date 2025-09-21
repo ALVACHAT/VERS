@@ -14,6 +14,7 @@ import pytz
 import json
 import os
 from colorama import Fore, Style, init
+from datetime import datetime, time
 
 # ===== IMPORT STRATEGII =====
 from VERS109Strategy import add_indicators, RR_value, EMA_short, EMA_long, RSI_long_thresh, RSI_short_thresh
@@ -42,7 +43,6 @@ def load_position():
         with open(POSITION_FILE, 'r') as f:
             try:
                 data = json.load(f)
-                # upewnij się, że klucze są
                 for k in ["BTC", "NASDAQ 100", "S&P 500", "NVIDIA", "Gold", "trend"]:
                     if k not in data:
                         data[k] = {}
@@ -106,13 +106,11 @@ lot_values = {
     "BTC": 48879.99,
     "NASDAQ 100": 1033,
     "S&P 500": 281,
-    "NVIDIA": 35.27,   # przykładowa wartość 1 akcji NVDA
-    "Gold": 36500      # przykładowa wartość dla kontraktu CFD na złoto
+    "NVIDIA": 35.27,
+    "Gold": 36500
 }
 
-# ===== STRATEGIA LIVE =====
-from datetime import datetime, time
-
+# ===== GODZINY RYNKÓW =====
 def is_market_open(name):
     now = datetime.utcnow()
     weekday = now.weekday()
@@ -120,34 +118,19 @@ def is_market_open(name):
 
     if name == "BTC":
         return True
-
     elif name == "NASDAQ 100":
-        return weekday < 5  # cały dzień roboczy (ETF’y notowane prawie 24h)
-
-    elif name == "NVIDIA":
+        return weekday < 5
+    elif name in ["NVIDIA", "S&P 500"]:
         if weekday >= 5:
             return False
-        start = time(13, 30)  # 13:30 UTC (15:30 PL)
-        end = time(20, 0)     # 20:00 UTC (22:00 PL)
+        start = time(13, 30)
+        end = time(20, 0)
         return start <= current_time <= end
-
-    elif name == "S&P 500":
-        if weekday >= 5:
-            return False
-        start = time(13, 30)  # 13:30 UTC (15:30 PL)
-        end = time(20, 0)     # 20:00 UTC (22:00 PL)
-        return start <= current_time <= end
-
     elif name == "Gold":
         if weekday >= 5:
             return False
-        start = time(23, 0)   # 23:00 UTC (01:00 PL)
-        end = time(22, 0)     # 22:00 UTC (24:00 PL)
-        # Uwaga: rynek zamknięty tylko od 22:00 do 23:00 UTC
         return not (time(22, 0) <= current_time < time(23, 0))
-
     return False
-
 
 # ===== STRATEGIA LIVE =====
 def check_trades():
@@ -160,7 +143,7 @@ def check_trades():
         "GC=F": "Gold"
     }
 
-    for symbol,name in assets.items():
+    for symbol, name in assets.items():
         if not is_market_open(name):
             print(f"[{name}] rynek poza godzinami aktywności. Pomijam.")
             continue
@@ -180,20 +163,20 @@ def check_trades():
             print(Fore.RED + f"[{name}] add_indicators zwróciło puste df.")
             continue
 
-        last = df.iloc[-1]
-        prev = df.iloc[-2]
+        last = df.iloc[[-1]]
+        prev = df.iloc[[-2]]
 
         try:
-            close = float(last["Close"])
-            ema_s = float(last["EMA_short"])
-            ema_l = float(last["EMA_long"])
-            ema200 = float(last["EMA200"])
-            atr = float(last["ATR"])
-            prev_atr = float(prev["ATR"])
-            rsi = float(last["RSI"])
-            volume = float(last["Volume"])
-            vol_ma = float(last["VolMA20"])
-            hi, lo = float(last["High"]), float(last["Low"])
+            close = float(last["Close"].iloc[0])
+            ema_s = float(last["EMA_short"].iloc[0])
+            ema_l = float(last["EMA_long"].iloc[0])
+            ema200 = float(last["EMA200"].iloc[0])
+            atr = float(last["ATR"].iloc[0])
+            prev_atr = float(prev["ATR"].iloc[0])
+            rsi = float(last["RSI"].iloc[0])
+            volume = float(last["Volume"].iloc[0])
+            vol_ma = float(last["VolMA20"].iloc[0])
+            hi, lo = float(last["High"].iloc[0]), float(last["Low"].iloc[0])
         except Exception as e:
             print(Fore.RED + f"[{name}] Błąd konwersji wartości ze świecy: {e}")
             continue
@@ -206,27 +189,21 @@ def check_trades():
         pos = position[name]
         is_active = bool(pos) and ("entry_price" in pos)
 
+        # --- Nowe otwarcie ---
         if not is_active and atr > prev_atr and volume > 1.1 * vol_ma:
-            # --- LONG ---
+            # LONG
             if ema_s > ema_l + ema_diff_thresh and close > ema200 and rsi < RSI_long_thresh:
                 stop = close - atr
                 target = close + RR_value * atr
                 risk_per_unit = abs(close - stop)
                 lot_value = lot_values.get(name, None)
-                if lot_value is None:
-                    print(Fore.RED + f"[{name}] Brak wartości lot_values dla instrumentu.")
+                if not lot_value or risk_per_unit <= 0:
                     continue
-                lot_risk = risk_per_unit * lot_value
-                if lot_risk <= 0 or np.isnan(lot_risk):
-                    print(Fore.RED + f"[{name}] lot_risk nieprawidłowy ({lot_risk}), pomijam otwarcie.")
-                    continue
-                lots = round(risk_per_trade / lot_risk, 6)
+                lots = round(risk_per_trade / (risk_per_unit * lot_value), 6)
                 if lots <= 0:
-                    print(Fore.YELLOW + f"[{name}] Obliczone lots = 0, pomijam otwarcie.")
                     continue
-
                 position[name] = {
-                    'type':'LONG',
+                    'type': 'LONG',
                     'entry_price': close,
                     'stop': stop,
                     'target': target,
@@ -241,26 +218,19 @@ def check_trades():
                     position[name]['notified'] = True
                     save_position(position)
 
-            # --- SHORT ---
+            # SHORT
             elif ema_s < ema_l - ema_diff_thresh and close < ema200 and rsi > RSI_short_thresh:
                 stop = close + atr
                 target = close - RR_value * atr
                 risk_per_unit = abs(close - stop)
                 lot_value = lot_values.get(name, None)
-                if lot_value is None:
-                    print(Fore.RED + f"[{name}] Brak wartości lot_values dla instrumentu.")
+                if not lot_value or risk_per_unit <= 0:
                     continue
-                lot_risk = risk_per_unit * lot_value
-                if lot_risk <= 0 or np.isnan(lot_risk):
-                    print(Fore.RED + f"[{name}] lot_risk nieprawidłowy ({lot_risk}), pomijam otwarcie.")
-                    continue
-                lots = round(risk_per_trade / lot_risk, 6)
+                lots = round(risk_per_trade / (risk_per_unit * lot_value), 6)
                 if lots <= 0:
-                    print(Fore.YELLOW + f"[{name}] Obliczone lots = 0, pomijam otwarcie.")
                     continue
-
                 position[name] = {
-                    'type':'SHORT',
+                    'type': 'SHORT',
                     'entry_price': close,
                     'stop': stop,
                     'target': target,
@@ -279,22 +249,21 @@ def check_trades():
         elif is_active:
             exit_price, exit_reason = None, None
             try:
-                if pos['type']=='LONG':
+                if pos['type'] == 'LONG':
                     if hi >= pos['target']:
-                        exit_price, exit_reason = pos['target'],'TP'
+                        exit_price, exit_reason = pos['target'], 'TP'
                     elif lo <= pos['stop']:
-                        exit_price, exit_reason = pos['stop'],'SL'
-                elif pos['type']=='SHORT':
+                        exit_price, exit_reason = pos['stop'], 'SL'
+                elif pos['type'] == 'SHORT':
                     if lo <= pos['target']:
-                        exit_price, exit_reason = pos['target'],'TP'
+                        exit_price, exit_reason = pos['target'], 'TP'
                     elif hi >= pos['stop']:
-                        exit_price, exit_reason = pos['stop'],'SL'
+                        exit_price, exit_reason = pos['stop'], 'SL'
             except Exception as e:
                 print(Fore.RED + f"[{name}] Błąd przy sprawdzaniu TP/SL: {e}")
-                exit_price = None
 
             if exit_price is not None:
-                notify_exit(name,pos,exit_price,exit_reason)
+                notify_exit(name, pos, exit_price, exit_reason)
                 position[name] = {}
                 save_position(position)
 
@@ -302,10 +271,10 @@ def check_trades():
 def start_command(update: Update, context: CallbackContext):
     text = (
         "◻ VERS119 - Bot tradingowy\n"
-        "Analizuje rynki co 15 minut czasu GMT+2 i sprawdza warunki strategii VERS109Strategy.\n"
+        "Analizuje rynki co 1 minutę czasu GMT+2 i sprawdza warunki strategii VERS109Strategy.\n"
         "Wysyła sygnały na Telegrama.\n\n"
         "SL = 25$ na trade.\n"
-        "Instrumenty: BTC, Nasdaq 100, S&P 500, NVIDIA, Gold.\n\n"
+        "Instrumenty: BTC, Nasdaq 100, S&P 500, NVIDIA, Gold.\n"
         "Backtest 2020-2025: winratio 54-57.2% przy RR 1:1.5 ◻"
     )
     update.message.reply_text(text)
@@ -315,12 +284,12 @@ def check_command(update: Update, context: CallbackContext):
 
 def status_command(update: Update, context: CallbackContext):
     text = "📊 Aktualne pozycje:\n\n"
-    for name,pos in position.items():
-        if name=="trend":
+    for name, pos in position.items():
+        if name == "trend":
             continue
         text += f"➖ {name}\n"
         if pos and "entry_price" in pos:
-            arrow = "✔ LONG" if pos['type']=='LONG' else "✔ SHORT"
+            arrow = "✔ LONG" if pos['type'] == 'LONG' else "✔ SHORT"
             text += (f"{arrow}\n"
                      f"Entry: {pos['entry_price']:.4f}\n"
                      f"Stop: {pos['stop']:.4f}\n"
