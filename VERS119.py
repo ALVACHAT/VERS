@@ -104,10 +104,10 @@ risk_per_trade = 25.0  # max strata na trade
 
 lot_values = {
     "BTC": 48879.99,
-    "NASDAQ 100": 1033,
-    "S&P 500": 281,
-    "NVIDIA": 35.27,
-    "Gold": 36500
+    "NASDAQ 100": 24680,
+    "S&P 500": 6675,
+    "NVIDIA": 177,
+    "Gold": 37337
 }
 
 # ===== GODZINY RYNKÓW =====
