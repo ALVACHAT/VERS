@@ -1,26 +1,25 @@
-# VERS119_full_nocharts_BNB_precise.py
+# VERS119_light_BNB_15m.py
 # Wymagania:
-# pip install yfinance pandas numpy python-telegram-bot==13.15 APScheduler pytz colorama
+# pip install yfinance pandas numpy python-telegram-bot==13.15 colorama
 
 import logging
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from telegram import Update, Bot
-from telegram.ext import Updater, CommandHandler, CallbackContext
-from apscheduler.schedulers.background import BackgroundScheduler
+from telegram import Bot
 import pytz
 import json
 import os
-from colorama import Fore, Style, init
+from colorama import Fore, init
 from datetime import datetime, time
+import time as t
 
 # ===== IMPORT STRATEGII =====
 from VERS109Strategy import add_indicators, RR_value, EMA_short, EMA_long, RSI_long_thresh, RSI_short_thresh
 
 # ===== INICJALIZACJA =====
 init(autoreset=True)
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # ===== TELEGRAM =====
 TOKEN = "8084949536:AAGxIZ-h8DPKCi9KuqsbGa3NqyFfzNZoqYI"
@@ -57,12 +56,10 @@ if "trend" not in position:
 
 # ===== FUNKCJE NOTYFIKACJI =====
 def notify(text, level="info"):
-    if level=="success":
-        print(Fore.GREEN + text)
-    elif level=="error":
-        print(Fore.RED + text)
-    else:
-        print(Fore.YELLOW + text)
+    color = Fore.YELLOW
+    if level == "success": color = Fore.GREEN
+    elif level == "error": color = Fore.RED
+    print(color + text)
     for chat_id in CHAT_IDS:
         try:
             bot.send_message(chat_id=chat_id, text=text, parse_mode='Markdown')
@@ -70,40 +67,29 @@ def notify(text, level="info"):
             print(Fore.RED + f"Błąd przy wysyłaniu powiadomienia do {chat_id}: {e}")
 
 def notify_open(name, pos):
-    text = (f"Nowa pozycja\n"
-            f"{name} {pos['type']}\n"
-            f"Entry: {pos['entry_price']:.4f}\n"
-            f"Stop: {pos['stop']:.4f}\n"
-            f"Target: {pos['target']:.4f}\n"
-            f"Lots: {pos.get('lots',0):.6f}\n"
-            f"RSI: {pos.get('RSI',0):.2f}, ATR: {pos.get('ATR',0):.4f}")
-    level = "success" if pos['type']=='LONG' else "error"
-    notify(text, level)
+    text = (f"Nowa pozycja\n{name} {pos['type']}\n"
+            f"Entry: {pos['entry_price']:.4f}\nStop: {pos['stop']:.4f}\nTarget: {pos['target']:.4f}\n"
+            f"Lots: {pos.get('lots',0):.6f}\nRSI: {pos.get('RSI',0):.2f}, ATR: {pos.get('ATR',0):.4f}")
+    notify(text, "success" if pos['type']=='LONG' else "error")
 
 def notify_exit(name, pos, exit_price, exit_reason):
     try:
         pnl_per_unit = (exit_price - pos['entry_price']) * (1 if pos['type']=='LONG' else -1)
         lot_value = lot_values.get(name, 1)
         pnl = pnl_per_unit * lot_value * pos.get('lots', 0)
-        text = (f"Pozycja zamknięta\n"
-                f"{name} {pos['type']} {exit_reason}\n"
-                f"Entry: {pos['entry_price']:.4f}\n"
-                f"Exit: {exit_price:.4f}\n"
-                f"Lots: {pos.get('lots',0):.6f}\n"
-                f"PnL: {pnl:.2f} $\n"
+        text = (f"Pozycja zamknięta\n{name} {pos['type']} {exit_reason}\n"
+                f"Entry: {pos['entry_price']:.4f}\nExit: {exit_price:.4f}\n"
+                f"Lots: {pos.get('lots',0):.6f}\nPnL: {pnl:.2f} $\n"
                 f"RSI: {pos.get('RSI',0):.2f}, ATR: {pos.get('ATR',0):.4f}")
-        level = "success" if exit_reason=='TP' else "error"
-        notify(text, level)
+        notify(text, "success" if exit_reason=='TP' else "error")
     except Exception as e:
         print(Fore.RED + f"Błąd w notify_exit: {e}")
-        notify(f"Pozycja zamknięta {name} {exit_reason}. (błąd szczegółów: {e})", "info")
 
 # ===== PARAMETRY RYZYKA =====
-risk_per_trade = 25.0  # max strata na trade
-
+risk_per_trade = 25.0
 lot_values = {
     "BTC": 48879.99,
-    "BNB": 300.0,  # przykładowa cena BNB
+    "BNB": 300.0,
     "NASDAQ 100": 24680,
     "S&P 500": 6675,
     "NVIDIA": 177,
@@ -114,21 +100,11 @@ lot_values = {
 def is_market_open(name):
     now = datetime.utcnow()
     weekday = now.weekday()
-    current_time = now.time()
-    if name in ["BTC", "BNB"]:
-        return True  # 24/7
-    elif name == "NASDAQ 100":
-        return weekday < 5
-    elif name in ["NVIDIA", "S&P 500"]:
-        if weekday >= 5:
-            return False
-        start = time(13, 30)
-        end = time(20, 0)
-        return start <= current_time <= end
-    elif name == "Gold":
-        if weekday >= 5:
-            return False
-        return not (time(22, 0) <= current_time < time(23, 0))
+    ct = now.time()
+    if name in ["BTC", "BNB"]: return True
+    if name == "NASDAQ 100": return weekday < 5
+    if name in ["NVIDIA", "S&P 500"]: return weekday < 5 and time(13,30) <= ct <= time(20,0)
+    if name == "Gold": return weekday < 5 and not (time(22,0) <= ct < time(23,0))
     return False
 
 # ===== STRATEGIA LIVE =====
@@ -144,28 +120,17 @@ def check_trades():
     }
 
     for symbol, name in assets.items():
-        if not is_market_open(name):
-            print(f"[{name}] rynek poza godzinami aktywności. Pomijam.")
-            continue
-
+        if not is_market_open(name): continue
         try:
-            df = yf.download(symbol, period="7d", interval="15m", progress=False, auto_adjust=False)
-        except Exception as e:
-            print(Fore.RED + f"Błąd w yf.download dla {symbol}: {e}")
+            df = yf.download(symbol, period="7d", interval="15m", progress=False, auto_adjust=True)
+        except:
             continue
-
-        if df.empty:
-            print(f"[{name}] brak danych z yfinance.")
-            continue
-
+        if df.empty: continue
         df = add_indicators(df)
-        if df.empty:
-            print(Fore.RED + f"[{name}] add_indicators zwróciło puste df.")
-            continue
+        if df.empty: continue
 
         last = df.iloc[[-1]]
         prev = df.iloc[[-2]]
-
         try:
             close = float(last["Close"].iloc[0])
             hi, lo = float(last["High"].iloc[0]), float(last["Low"].iloc[0])
@@ -177,13 +142,11 @@ def check_trades():
             rsi = float(last["RSI"].iloc[0])
             volume = float(last["Volume"].iloc[0])
             vol_ma = float(last["VolMA20"].iloc[0])
-        except Exception as e:
-            print(Fore.RED + f"[{name}] Błąd konwersji wartości ze świecy: {e}")
+        except:
             continue
 
         ema_diff_thresh = 0.001 * close
-        if name not in position:
-            position[name] = {}
+        if name not in position: position[name] = {}
         pos = position[name]
         is_active = bool(pos) and ("entry_price" in pos)
 
@@ -191,135 +154,57 @@ def check_trades():
         if not is_active and atr > prev_atr and volume > 1.1 * vol_ma:
             # LONG
             if ema_s > ema_l + ema_diff_thresh and close > ema200 and rsi < RSI_long_thresh:
-                stop = close - atr
-                target = close + RR_value * atr
+                stop, target = close - atr, close + RR_value * atr
                 risk_per_unit = abs(close - stop)
                 lot_value = lot_values.get(name, None)
-                if not lot_value or risk_per_unit <= 0:
-                    continue
+                if not lot_value or risk_per_unit <= 0: continue
                 lots = round(risk_per_trade / (risk_per_unit * lot_value), 6)
-                if lots <= 0:
-                    continue
-                position[name] = {
-                    'type': 'LONG',
-                    'entry_price': close,
-                    'stop': stop,
-                    'target': target,
-                    'RSI': rsi,
-                    'ATR': atr,
-                    'lots': lots,
-                    'notified': False
-                }
+                if lots <= 0: continue
+                position[name] = {'type':'LONG','entry_price':close,'stop':stop,'target':target,
+                                  'RSI':rsi,'ATR':atr,'lots':lots,'notified':False}
                 save_position(position)
                 if not position[name]['notified']:
                     notify_open(name, position[name])
                     position[name]['notified'] = True
                     save_position(position)
+
             # SHORT
             elif ema_s < ema_l - ema_diff_thresh and close < ema200 and rsi > RSI_short_thresh:
-                stop = close + atr
-                target = close - RR_value * atr
+                stop, target = close + atr, close - RR_value * atr
                 risk_per_unit = abs(close - stop)
                 lot_value = lot_values.get(name, None)
-                if not lot_value or risk_per_unit <= 0:
-                    continue
+                if not lot_value or risk_per_unit <= 0: continue
                 lots = round(risk_per_trade / (risk_per_unit * lot_value), 6)
-                if lots <= 0:
-                    continue
-                position[name] = {
-                    'type': 'SHORT',
-                    'entry_price': close,
-                    'stop': stop,
-                    'target': target,
-                    'RSI': rsi,
-                    'ATR': atr,
-                    'lots': lots,
-                    'notified': False
-                }
+                if lots <= 0: continue
+                position[name] = {'type':'SHORT','entry_price':close,'stop':stop,'target':target,
+                                  'RSI':rsi,'ATR':atr,'lots':lots,'notified':False}
                 save_position(position)
                 if not position[name]['notified']:
                     notify_open(name, position[name])
                     position[name]['notified'] = True
                     save_position(position)
 
-        # --- Zamykanie pozycji z dokładnym TP/SL ---
+        # --- Zamykanie pozycji ---
         elif is_active:
             exit_price, exit_reason = None, None
-            try:
-                if pos['type'] == 'LONG':
-                    if hi >= pos['target']:
-                        exit_price = min(pos['target'], hi)
-                        exit_reason = 'TP'
-                    elif lo <= pos['stop']:
-                        exit_price = max(pos['stop'], lo)
-                        exit_reason = 'SL'
-                elif pos['type'] == 'SHORT':
-                    if lo <= pos['target']:
-                        exit_price = max(pos['target'], lo)
-                        exit_reason = 'TP'
-                    elif hi >= pos['stop']:
-                        exit_price = min(pos['stop'], hi)
-                        exit_reason = 'SL'
-
-                print(f"[DEBUG] {name} | hi={hi:.2f}, lo={lo:.2f}, entry={pos['entry_price']:.2f}, stop={pos['stop']:.2f}, target={pos['target']:.2f}")
-            except Exception as e:
-                print(Fore.RED + f"[{name}] Błąd przy sprawdzaniu TP/SL: {e}")
-
+            if pos['type']=='LONG':
+                if hi >= pos['target']: exit_price, exit_reason = pos['target'], 'TP'
+                elif lo <= pos['stop']: exit_price, exit_reason = pos['stop'], 'SL'
+            elif pos['type']=='SHORT':
+                if lo <= pos['target']: exit_price, exit_reason = pos['target'], 'TP'
+                elif hi >= pos['stop']: exit_price, exit_reason = pos['stop'], 'SL'
             if exit_price is not None:
-                notify_exit(name, pos, exit_price, exit_reason)
+                notify_exit(name,pos,exit_price,exit_reason)
                 position[name] = {}
                 save_position(position)
 
-# ===== KOMENDY TELEGRAM =====
-def start_command(update: Update, context: CallbackContext):
-    text = (
-        "◻ VERS119 - Bot tradingowy\n"
-        "Analizuje rynki co 1 minutę czasu GMT+2 i sprawdza warunki strategii VERS109Strategy.\n"
-        "Wysyła sygnały na Telegrama.\n\n"
-        "SL = 25$ na trade.\n"
-        "Instrumenty: BTC, BNB, Nasdaq 100, S&P 500, NVIDIA, Gold.\n"
-        "Backtest 2020-2025: winratio 54-57.2% przy RR 1:1.5 ◻"
-    )
-    update.message.reply_text(text)
-
-def check_command(update: Update, context: CallbackContext):
-    update.message.reply_text("◼VERS jest online◼")
-
-def status_command(update: Update, context: CallbackContext):
-    text = "📊 Aktualne pozycje:\n\n"
-    for name, pos in position.items():
-        if name == "trend":
-            continue
-        text += f"➖ {name}\n"
-        if pos and "entry_price" in pos:
-            arrow = "✔ LONG" if pos['type'] == 'LONG' else "✔ SHORT"
-            text += (f"{arrow}\n"
-                     f"Entry: {pos['entry_price']:.4f}\n"
-                     f"Stop: {pos['stop']:.4f}\n"
-                     f"Target: {pos['target']:.4f}\n"
-                     f"Lots: {pos.get('lots',0):.6f}\n\n")
-        else:
-            text += "✖ Brak aktywnej pozycji\n\n"
-    update.message.reply_text(text)
-
 # ===== MAIN =====
 def main():
-    logging.info("Start bota...")
-    updater = Updater(TOKEN, use_context=True)
-    dispatcher = updater.dispatcher
-
-    dispatcher.add_handler(CommandHandler("start", start_command))
-    dispatcher.add_handler(CommandHandler("check", check_command))
-    dispatcher.add_handler(CommandHandler("status", status_command))
-
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(check_trades, 'interval', minutes=1, timezone=pytz.timezone('Europe/Warsaw'))
-    scheduler.start()
-
+    logging.info("Start light 15m bota...")
     check_trades()
-
-    updater.start_polling()
-    updater.idle()
+    while True:
+        t.sleep(60)
+        check_trades()
 
 if __name__ == "__main__":
     main()
