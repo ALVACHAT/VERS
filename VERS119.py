@@ -1,6 +1,7 @@
 # VERS119_notify_trades_loop.py
 # Wymagania:
 # pip install yfinance pandas numpy python-telegram-bot==13.15 colorama APScheduler pytz
+# wersja Light v1 - 23.09
 
 import yfinance as yf
 from datetime import datetime, time
