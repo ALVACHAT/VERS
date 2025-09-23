@@ -1,26 +1,33 @@
-# VERS119_notify_trades_loop.py
+# VERS119_full_nocharts_BNB_precise.py
 # Wymagania:
-# pip install yfinance pandas numpy python-telegram-bot==13.15 colorama APScheduler pytz
-# wersja Light v1 - 23.09
+# pip install yfinance pandas numpy python-telegram-bot==13.15 APScheduler pytz colorama
 
+import logging
 import yfinance as yf
-from datetime import datetime, time
-from colorama import Fore, init
-from telegram import Bot
-import json
-import os
+import pandas as pd
+import numpy as np
+from telegram import Update, Bot
+from telegram.ext import Updater, CommandHandler, CallbackContext
 from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
+import json
+import os
+from colorama import Fore, Style, init
+from datetime import datetime, time
+
+# ===== IMPORT STRATEGII =====
+from VERS109Strategy import add_indicators, RR_value, EMA_short, EMA_long, RSI_long_thresh, RSI_short_thresh
 
 # ===== INICJALIZACJA =====
 init(autoreset=True)
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # ===== TELEGRAM =====
 TOKEN = "8084949536:AAGxIZ-h8DPKCi9KuqsbGa3NqyFfzNZoqYI"
-CHAT_IDS = [7382335576, 7022309811, 7168430398]
+CHAT_IDS = [7382335576, 7022309811]
 bot = Bot(TOKEN)
 
-# ===== PLIK POZYCJI =====
+# ===== PLIK DO POZYCJI =====
 POSITION_FILE = "position.json"
 
 def save_position(position):
@@ -35,15 +42,18 @@ def load_position():
         with open(POSITION_FILE, 'r') as f:
             try:
                 data = json.load(f)
-                for k in ["BTC", "NASDAQ 100", "S&P 500", "NVIDIA", "Gold"]:
+                for k in ["BTC", "BNB", "NASDAQ 100", "S&P 500", "NVIDIA", "Gold", "trend"]:
                     if k not in data:
                         data[k] = {}
                 return data
-            except:
-                pass
-    return {"BTC": {}, "NASDAQ 100": {}, "S&P 500": {}, "NVIDIA": {}, "Gold": {}}
+            except Exception as e:
+                print(Fore.RED + f"Błąd przy wczytywaniu position.json: {e}")
+                return {"BTC": {}, "BNB": {}, "NASDAQ 100": {}, "S&P 500": {}, "NVIDIA": {}, "Gold": {}, "trend": {}}
+    return {"BTC": {}, "BNB": {}, "NASDAQ 100": {}, "S&P 500": {}, "NVIDIA": {}, "Gold": {}, "trend": {}}
 
 position = load_position()
+if "trend" not in position:
+    position["trend"] = {}
 
 # ===== FUNKCJE NOTYFIKACJI =====
 def notify(text, level="info"):
@@ -73,7 +83,7 @@ def notify_open(name, pos):
 def notify_exit(name, pos, exit_price, exit_reason):
     try:
         pnl_per_unit = (exit_price - pos['entry_price']) * (1 if pos['type']=='LONG' else -1)
-        lot_value = pos.get('lot_value', 1)
+        lot_value = lot_values.get(name, 1)
         pnl = pnl_per_unit * lot_value * pos.get('lots', 0)
         text = (f"Pozycja zamknięta\n"
                 f"{name} {pos['type']} {exit_reason}\n"
@@ -86,43 +96,47 @@ def notify_exit(name, pos, exit_price, exit_reason):
         notify(text, level)
     except Exception as e:
         print(Fore.RED + f"Błąd w notify_exit: {e}")
+        notify(f"Pozycja zamknięta {name} {exit_reason}. (błąd szczegółów: {e})", "info")
 
-# ===== PARAMETRY =====
-risk_per_trade = 25.0
+# ===== PARAMETRY RYZYKA =====
+risk_per_trade = 25.0  # max strata na trade
 
 lot_values = {
     "BTC": 48879.99,
+    "BNB": 300.0,  # przykładowa cena BNB
     "NASDAQ 100": 24680,
     "S&P 500": 6675,
     "NVIDIA": 177,
     "Gold": 37337
 }
 
-# ===== STRATEGIA =====
-from VERS109Strategy import add_indicators, RR_value, EMA_short, EMA_long, RSI_long_thresh, RSI_short_thresh
-
-# ===== GODZINY RYNKU =====
+# ===== GODZINY RYNKÓW =====
 def is_market_open(name):
     now = datetime.utcnow()
     weekday = now.weekday()
     current_time = now.time()
-    if name == "BTC":
-        return True
+    if name in ["BTC", "BNB"]:
+        return True  # 24/7
     elif name == "NASDAQ 100":
         return weekday < 5
     elif name in ["NVIDIA", "S&P 500"]:
-        if weekday >= 5: return False
-        return time(13,30) <= current_time <= time(20,0)
+        if weekday >= 5:
+            return False
+        start = time(13, 30)
+        end = time(20, 0)
+        return start <= current_time <= end
     elif name == "Gold":
-        if weekday >= 5: return False
-        return not (time(22,0) <= current_time < time(23,0))
+        if weekday >= 5:
+            return False
+        return not (time(22, 0) <= current_time < time(23, 0))
     return False
 
-# ===== LOGIKA TREJDÓW =====
+# ===== STRATEGIA LIVE =====
 def check_trades():
     global position
     assets = {
         "BTC-USD": "BTC",
+        "BNB-USD": "BNB",
         "^NDX": "NASDAQ 100",
         "^GSPC": "S&P 500",
         "NVDA": "NVIDIA",
@@ -135,7 +149,6 @@ def check_trades():
             continue
 
         try:
-            # Pobieramy dane bez auto_adjust
             df = yf.download(symbol, period="7d", interval="15m", progress=False, auto_adjust=False)
         except Exception as e:
             print(Fore.RED + f"Błąd w yf.download dla {symbol}: {e}")
@@ -171,7 +184,6 @@ def check_trades():
         ema_diff_thresh = 0.001 * close
         if name not in position:
             position[name] = {}
-
         pos = position[name]
         is_active = bool(pos) and ("entry_price" in pos)
 
@@ -203,7 +215,6 @@ def check_trades():
                     notify_open(name, position[name])
                     position[name]['notified'] = True
                     save_position(position)
-
             # SHORT
             elif ema_s < ema_l - ema_diff_thresh and close < ema200 and rsi > RSI_short_thresh:
                 stop = close + atr
@@ -231,22 +242,25 @@ def check_trades():
                     position[name]['notified'] = True
                     save_position(position)
 
-        # --- Zamykanie pozycji ---
+        # --- Zamykanie pozycji z dokładnym TP/SL ---
         elif is_active:
             exit_price, exit_reason = None, None
             try:
                 if pos['type'] == 'LONG':
                     if hi >= pos['target']:
-                        exit_price, exit_reason = pos['target'], 'TP'
+                        exit_price = min(pos['target'], hi)
+                        exit_reason = 'TP'
                     elif lo <= pos['stop']:
-                        exit_price, exit_reason = pos['stop'], 'SL'
+                        exit_price = max(pos['stop'], lo)
+                        exit_reason = 'SL'
                 elif pos['type'] == 'SHORT':
                     if lo <= pos['target']:
-                        exit_price, exit_reason = pos['target'], 'TP'
+                        exit_price = max(pos['target'], lo)
+                        exit_reason = 'TP'
                     elif hi >= pos['stop']:
-                        exit_price, exit_reason = pos['stop'], 'SL'
+                        exit_price = min(pos['stop'], hi)
+                        exit_reason = 'SL'
 
-                # Zaktualizowane logowanie dla debugowania
                 print(f"[DEBUG] {name} | hi={hi:.2f}, lo={lo:.2f}, entry={pos['entry_price']:.2f}, stop={pos['stop']:.2f}, target={pos['target']:.2f}")
             except Exception as e:
                 print(Fore.RED + f"[{name}] Błąd przy sprawdzaniu TP/SL: {e}")
@@ -256,18 +270,56 @@ def check_trades():
                 position[name] = {}
                 save_position(position)
 
+# ===== KOMENDY TELEGRAM =====
+def start_command(update: Update, context: CallbackContext):
+    text = (
+        "◻ VERS119 - Bot tradingowy\n"
+        "Analizuje rynki co 1 minutę czasu GMT+2 i sprawdza warunki strategii VERS109Strategy.\n"
+        "Wysyła sygnały na Telegrama.\n\n"
+        "SL = 25$ na trade.\n"
+        "Instrumenty: BTC, BNB, Nasdaq 100, S&P 500, NVIDIA, Gold.\n"
+        "Backtest 2020-2025: winratio 54-57.2% przy RR 1:1.5 ◻"
+    )
+    update.message.reply_text(text)
+
+def check_command(update: Update, context: CallbackContext):
+    update.message.reply_text("◼VERS jest online◼")
+
+def status_command(update: Update, context: CallbackContext):
+    text = "📊 Aktualne pozycje:\n\n"
+    for name, pos in position.items():
+        if name == "trend":
+            continue
+        text += f"➖ {name}\n"
+        if pos and "entry_price" in pos:
+            arrow = "✔ LONG" if pos['type'] == 'LONG' else "✔ SHORT"
+            text += (f"{arrow}\n"
+                     f"Entry: {pos['entry_price']:.4f}\n"
+                     f"Stop: {pos['stop']:.4f}\n"
+                     f"Target: {pos['target']:.4f}\n"
+                     f"Lots: {pos.get('lots',0):.6f}\n\n")
+        else:
+            text += "✖ Brak aktywnej pozycji\n\n"
+    update.message.reply_text(text)
+
 # ===== MAIN =====
-if __name__ == "__main__":
+def main():
+    logging.info("Start bota...")
+    updater = Updater(TOKEN, use_context=True)
+    dispatcher = updater.dispatcher
+
+    dispatcher.add_handler(CommandHandler("start", start_command))
+    dispatcher.add_handler(CommandHandler("check", check_command))
+    dispatcher.add_handler(CommandHandler("status", status_command))
+
     scheduler = BackgroundScheduler()
     scheduler.add_job(check_trades, 'interval', minutes=1, timezone=pytz.timezone('Europe/Warsaw'))
     scheduler.start()
-    print(Fore.YELLOW + "Bot uruchomiony, analizuje rynek co 1 minutę...")
-    
-    # Utrzymanie działania w tle
-    try:
-        import time
-        while True:
-            time.sleep(10)
-    except (KeyboardInterrupt, SystemExit):
-        scheduler.shutdown()
-        print(Fore.RED + "Bot zatrzymany")
+
+    check_trades()
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == "__main__":
+    main()
