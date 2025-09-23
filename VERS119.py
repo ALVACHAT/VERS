@@ -1,34 +1,25 @@
-# VERS119_full_nocharts.py
+# VERS119_notify_trades_loop.py
 # Wymagania:
-# pip install yfinance pandas numpy python-telegram-bot==13.15 APScheduler pytz colorama
-# update 1909.v3 (dodano NVIDIA i Gold)
+# pip install yfinance pandas numpy python-telegram-bot==13.15 colorama APScheduler pytz
 
-import logging
 import yfinance as yf
-import pandas as pd
-import numpy as np
-from telegram import Update, Bot
-from telegram.ext import Updater, CommandHandler, CallbackContext
-from apscheduler.schedulers.background import BackgroundScheduler
-import pytz
+from datetime import datetime, time
+from colorama import Fore, init
+from telegram import Bot
 import json
 import os
-from colorama import Fore, Style, init
-from datetime import datetime, time
-
-# ===== IMPORT STRATEGII =====
-from VERS109Strategy import add_indicators, RR_value, EMA_short, EMA_long, RSI_long_thresh, RSI_short_thresh
+from apscheduler.schedulers.background import BackgroundScheduler
+import pytz
 
 # ===== INICJALIZACJA =====
 init(autoreset=True)
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 # ===== TELEGRAM =====
 TOKEN = "8084949536:AAGxIZ-h8DPKCi9KuqsbGa3NqyFfzNZoqYI"
 CHAT_IDS = [7382335576, 7022309811]
 bot = Bot(TOKEN)
 
-# ===== PLIK DO POZYCJI =====
+# ===== PLIK POZYCJI =====
 POSITION_FILE = "position.json"
 
 def save_position(position):
@@ -43,18 +34,15 @@ def load_position():
         with open(POSITION_FILE, 'r') as f:
             try:
                 data = json.load(f)
-                for k in ["BTC", "NASDAQ 100", "S&P 500", "NVIDIA", "Gold", "trend"]:
+                for k in ["BTC", "NASDAQ 100", "S&P 500", "NVIDIA", "Gold"]:
                     if k not in data:
                         data[k] = {}
                 return data
-            except Exception as e:
-                print(Fore.RED + f"Błąd przy wczytywaniu position.json: {e}")
-                return {"BTC": {}, "NASDAQ 100": {}, "S&P 500": {}, "NVIDIA": {}, "Gold": {}, "trend": {}}
-    return {"BTC": {}, "NASDAQ 100": {}, "S&P 500": {}, "NVIDIA": {}, "Gold": {}, "trend": {}}
+            except:
+                pass
+    return {"BTC": {}, "NASDAQ 100": {}, "S&P 500": {}, "NVIDIA": {}, "Gold": {}}
 
 position = load_position()
-if "trend" not in position:
-    position["trend"] = {}
 
 # ===== FUNKCJE NOTYFIKACJI =====
 def notify(text, level="info"):
@@ -84,7 +72,7 @@ def notify_open(name, pos):
 def notify_exit(name, pos, exit_price, exit_reason):
     try:
         pnl_per_unit = (exit_price - pos['entry_price']) * (1 if pos['type']=='LONG' else -1)
-        lot_value = lot_values.get(name, 1)
+        lot_value = pos.get('lot_value', 1)
         pnl = pnl_per_unit * lot_value * pos.get('lots', 0)
         text = (f"Pozycja zamknięta\n"
                 f"{name} {pos['type']} {exit_reason}\n"
@@ -97,10 +85,9 @@ def notify_exit(name, pos, exit_price, exit_reason):
         notify(text, level)
     except Exception as e:
         print(Fore.RED + f"Błąd w notify_exit: {e}")
-        notify(f"Pozycja zamknięta {name} {exit_reason}. (błąd szczegółów: {e})", "info")
 
-# ===== PARAMETRY RYZYKA =====
-risk_per_trade = 25.0  # max strata na trade
+# ===== PARAMETRY =====
+risk_per_trade = 25.0
 
 lot_values = {
     "BTC": 48879.99,
@@ -110,29 +97,27 @@ lot_values = {
     "Gold": 37337
 }
 
-# ===== GODZINY RYNKÓW =====
+# ===== STRATEGIA =====
+from VERS109Strategy import add_indicators, RR_value, EMA_short, EMA_long, RSI_long_thresh, RSI_short_thresh
+
+# ===== GODZINY RYNKU =====
 def is_market_open(name):
     now = datetime.utcnow()
     weekday = now.weekday()
     current_time = now.time()
-
     if name == "BTC":
         return True
     elif name == "NASDAQ 100":
         return weekday < 5
     elif name in ["NVIDIA", "S&P 500"]:
-        if weekday >= 5:
-            return False
-        start = time(13, 30)
-        end = time(20, 0)
-        return start <= current_time <= end
+        if weekday >= 5: return False
+        return time(13,30) <= current_time <= time(20,0)
     elif name == "Gold":
-        if weekday >= 5:
-            return False
-        return not (time(22, 0) <= current_time < time(23, 0))
+        if weekday >= 5: return False
+        return not (time(22,0) <= current_time < time(23,0))
     return False
 
-# ===== STRATEGIA LIVE =====
+# ===== LOGIKA TREJDÓW =====
 def check_trades():
     global position
     assets = {
@@ -149,7 +134,8 @@ def check_trades():
             continue
 
         try:
-            df = yf.download(symbol, period="7d", interval="15m", progress=False, auto_adjust=True)
+            # Pobieramy dane bez auto_adjust
+            df = yf.download(symbol, period="7d", interval="15m", progress=False, auto_adjust=False)
         except Exception as e:
             print(Fore.RED + f"Błąd w yf.download dla {symbol}: {e}")
             continue
@@ -168,6 +154,7 @@ def check_trades():
 
         try:
             close = float(last["Close"].iloc[0])
+            hi, lo = float(last["High"].iloc[0]), float(last["Low"].iloc[0])
             ema_s = float(last["EMA_short"].iloc[0])
             ema_l = float(last["EMA_long"].iloc[0])
             ema200 = float(last["EMA200"].iloc[0])
@@ -176,13 +163,11 @@ def check_trades():
             rsi = float(last["RSI"].iloc[0])
             volume = float(last["Volume"].iloc[0])
             vol_ma = float(last["VolMA20"].iloc[0])
-            hi, lo = float(last["High"].iloc[0]), float(last["Low"].iloc[0])
         except Exception as e:
             print(Fore.RED + f"[{name}] Błąd konwersji wartości ze świecy: {e}")
             continue
 
         ema_diff_thresh = 0.001 * close
-
         if name not in position:
             position[name] = {}
 
@@ -259,6 +244,9 @@ def check_trades():
                         exit_price, exit_reason = pos['target'], 'TP'
                     elif hi >= pos['stop']:
                         exit_price, exit_reason = pos['stop'], 'SL'
+
+                # Zaktualizowane logowanie dla debugowania
+                print(f"[DEBUG] {name} | hi={hi:.2f}, lo={lo:.2f}, entry={pos['entry_price']:.2f}, stop={pos['stop']:.2f}, target={pos['target']:.2f}")
             except Exception as e:
                 print(Fore.RED + f"[{name}] Błąd przy sprawdzaniu TP/SL: {e}")
 
@@ -267,56 +255,18 @@ def check_trades():
                 position[name] = {}
                 save_position(position)
 
-# ===== KOMENDY TELEGRAM =====
-def start_command(update: Update, context: CallbackContext):
-    text = (
-        "◻ VERS119 - Bot tradingowy\n"
-        "Analizuje rynki co 1 minutę czasu GMT+2 i sprawdza warunki strategii VERS109Strategy.\n"
-        "Wysyła sygnały na Telegrama.\n\n"
-        "SL = 25$ na trade.\n"
-        "Instrumenty: BTC, Nasdaq 100, S&P 500, NVIDIA, Gold.\n"
-        "Backtest 2020-2025: winratio 54-57.2% przy RR 1:1.5 ◻"
-    )
-    update.message.reply_text(text)
-
-def check_command(update: Update, context: CallbackContext):
-    update.message.reply_text("◼VERS jest online◼")
-
-def status_command(update: Update, context: CallbackContext):
-    text = "📊 Aktualne pozycje:\n\n"
-    for name, pos in position.items():
-        if name == "trend":
-            continue
-        text += f"➖ {name}\n"
-        if pos and "entry_price" in pos:
-            arrow = "✔ LONG" if pos['type'] == 'LONG' else "✔ SHORT"
-            text += (f"{arrow}\n"
-                     f"Entry: {pos['entry_price']:.4f}\n"
-                     f"Stop: {pos['stop']:.4f}\n"
-                     f"Target: {pos['target']:.4f}\n"
-                     f"Lots: {pos.get('lots',0):.6f}\n\n")
-        else:
-            text += "✖ Brak aktywnej pozycji\n\n"
-    update.message.reply_text(text)
-
 # ===== MAIN =====
-def main():
-    logging.info("Start bota...")
-    updater = Updater(TOKEN, use_context=True)
-    dispatcher = updater.dispatcher
-
-    dispatcher.add_handler(CommandHandler("start", start_command))
-    dispatcher.add_handler(CommandHandler("check", check_command))
-    dispatcher.add_handler(CommandHandler("status", status_command))
-
+if __name__ == "__main__":
     scheduler = BackgroundScheduler()
     scheduler.add_job(check_trades, 'interval', minutes=1, timezone=pytz.timezone('Europe/Warsaw'))
     scheduler.start()
-
-    check_trades()
-
-    updater.start_polling()
-    updater.idle()
-
-if __name__ == "__main__":
-    main()
+    print(Fore.YELLOW + "Bot uruchomiony, analizuje rynek co 1 minutę...")
+    
+    # Utrzymanie działania w tle
+    try:
+        import time
+        while True:
+            time.sleep(10)
+    except (KeyboardInterrupt, SystemExit):
+        scheduler.shutdown()
+        print(Fore.RED + "Bot zatrzymany")
